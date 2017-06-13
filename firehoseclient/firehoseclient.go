@@ -21,7 +21,8 @@ type FirehoseConfig struct {
 	FirehoseSubscriptionID string
 }
 
-func NewFirehoseNozzle(consumer splunknozzle.FirehoseConsumer, eventRouting splunknozzle.EventRouter, firehoseconfig *FirehoseConfig) *FirehoseNozzle {
+func NewFirehoseNozzle(consumer splunknozzle.FirehoseConsumer, eventRouting splunknozzle.EventRouter,
+	firehoseconfig *FirehoseConfig) *FirehoseNozzle {
 	return &FirehoseNozzle{
 		eventRouting: eventRouting,
 		consumer:     consumer,

@@ -3,6 +3,7 @@ package drain
 import (
 	"fmt"
 	"math"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -15,26 +16,29 @@ type LoggingConfig struct {
 	FlushInterval time.Duration
 	QueueSize     int
 	BatchSize     int
+	Fields        map[string]string
 }
 
 type LoggingSplunk struct {
-	logger lager.Logger
-	client splunk.SplunkClient
-	config *LoggingConfig
-	events chan map[string]interface{}
+	logger  lager.Logger
+	clients []splunk.SplunkClient
+	config  *LoggingConfig
+	events  chan map[string]interface{}
 }
 
-func NewLoggingSplunk(logger lager.Logger, splunkClient splunk.SplunkClient, config *LoggingConfig) *LoggingSplunk {
+func NewLoggingSplunk(logger lager.Logger, splunkClients []splunk.SplunkClient, config *LoggingConfig) *LoggingSplunk {
 	return &LoggingSplunk{
-		logger: logger,
-		client: splunkClient,
-		config: config,
-		events: make(chan map[string]interface{}, config.QueueSize), //consumer queue buffer size
+		logger:  logger,
+		clients: splunkClients,
+		config:  config,
+		events:  make(chan map[string]interface{}, config.QueueSize), //consumer queue buffer size
 	}
 }
 
 func (l *LoggingSplunk) Connect() bool {
-	go l.consume()
+	for _, client := range l.clients {
+		go l.consume(client)
+	}
 
 	return true
 }
@@ -44,9 +48,17 @@ func (l *LoggingSplunk) ShipEvents(fields map[string]interface{}, msg string) {
 	l.events <- event
 }
 
-func (l *LoggingSplunk) consume() {
+func (l *LoggingSplunk) randomizeSleep() {
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+	n := r.Int31n(10000000)
+	time.Sleep(time.Microsecond * time.Duration(n))
+}
+
+func (l *LoggingSplunk) consume(client splunk.SplunkClient) {
 	var batch []map[string]interface{}
 	tickChan := time.NewTicker(l.config.FlushInterval).C
+
+	// l.randomizeSleep()
 
 	// Either flush window or batch size reach limits, we flush
 	for {
@@ -54,10 +66,10 @@ func (l *LoggingSplunk) consume() {
 		case event := <-l.events:
 			batch = append(batch, event)
 			if len(batch) >= l.config.BatchSize {
-				batch = l.indexEvents(batch)
+				batch = l.indexEvents(client, batch)
 			}
 		case <-tickChan:
-			batch = l.indexEvents(batch)
+			batch = l.indexEvents(client, batch)
 		}
 	}
 }
@@ -65,13 +77,13 @@ func (l *LoggingSplunk) consume() {
 // indexEvents indexes events to Splunk
 // return nil when sucessful which clears all outstanding events
 // return what the batch has if there is an error for next retry cycle
-func (l *LoggingSplunk) indexEvents(batch []map[string]interface{}) []map[string]interface{} {
+func (l *LoggingSplunk) indexEvents(client splunk.SplunkClient, batch []map[string]interface{}) []map[string]interface{} {
 	if len(batch) == 0 {
 		return batch
 	}
 
-	l.logger.Info(fmt.Sprintf("Posting %d events", len(batch)))
-	err := l.client.Post(batch)
+	// l.logger.Debug(fmt.Sprintf("Posting %d events", len(batch)))
+	err := client.Post(batch)
 	if err != nil {
 		l.logger.Error("Unable to talk to Splunk, error=%+v", err)
 		// return back the batch for next retry
@@ -100,6 +112,7 @@ func (l *LoggingSplunk) buildEvent(fields map[string]interface{}, msg string) ma
 	event["sourcetype"] = fmt.Sprintf("cf:%s", eventType)
 
 	event["event"] = fields
+	fields["fields"] = l.config.Fields
 
 	return event
 }

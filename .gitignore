@@ -11,3 +11,4 @@ splunk-firehose-nozzle
 manifest*.yml
 vendor/*
 splunk-firehose-nozzle.iml
+*.svg

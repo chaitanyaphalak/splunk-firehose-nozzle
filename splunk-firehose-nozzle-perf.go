@@ -1,11 +1,9 @@
 package main
 
 import (
-	"crypto/tls"
 	"errors"
 	"flag"
 	"fmt"
-	"time"
 
 	"code.cloudfoundry.org/cflager"
 	"code.cloudfoundry.org/lager"
@@ -14,7 +12,7 @@ import (
 	"github.com/cloudfoundry-community/firehose-to-syslog/extrafields"
 	"github.com/cloudfoundry-community/firehose-to-syslog/logging"
 	"github.com/cloudfoundry-community/go-cfclient"
-	"github.com/cloudfoundry/noaa/consumer"
+	"github.com/google/uuid"
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/cloudfoundry-community/splunk-firehose-nozzle/auth"
@@ -22,6 +20,7 @@ import (
 	"github.com/cloudfoundry-community/splunk-firehose-nozzle/firehoseclient"
 	"github.com/cloudfoundry-community/splunk-firehose-nozzle/sink"
 	"github.com/cloudfoundry-community/splunk-firehose-nozzle/splunk"
+	"github.com/cloudfoundry-community/splunk-firehose-nozzle/testing"
 )
 
 var (
@@ -68,6 +67,12 @@ var (
 			OverrideDefaultFromEnvar("CONSUMER_QUEUE_SIZE").Default("10000").Int()
 	batchSize = kingpin.Flag("hec-batch-size", "Batchsize of the events pushing to HEC  ").
 			OverrideDefaultFromEnvar("HEC_BATCH_SIZE").Default("1000").Int()
+	firehoseEps = kingpin.Flag("firehose-eps", "EPS to simulate for Firehose").
+			OverrideDefaultFromEnvar("FIREHOSE_EPS").Default("100000").Int()
+	totalEvents = kingpin.Flag("firehose-total-events", "Total events to simulate for Firehose").
+			OverrideDefaultFromEnvar("FIREHOSE_TOTAL_EVENTS").Default("1000000").Int64()
+	hecWorkers = kingpin.Flag("splunk-hec-workers", "Total events to simulate for Firehose").
+			OverrideDefaultFromEnvar("SPLUNK_HEC_WORKERS").Default("1").Int()
 )
 
 var (
@@ -92,6 +97,8 @@ func main() {
 		logger.Fatal("Error parsing extra fields: ", err)
 	}
 
+	parsedExtraFields["run-uuid"] = uuid.New().String()
+
 	loggingConfig := &drain.LoggingConfig{
 		FlushInterval: *flushInterval,
 		QueueSize:     *queueSize,
@@ -104,15 +111,27 @@ func main() {
 		loggingClient = &drain.LoggingStd{}
 	} else {
 		splunkClient := splunk.NewSplunkClient(*splunkToken, *splunkHost, *splunkIndex, *skipSSL, logger)
-		loggingClient = drain.NewLoggingSplunk(logger, []splunk.SplunkClient{splunkClient}, loggingConfig)
 		logger.RegisterSink(sink.NewSplunkSink(*jobName, *jobIndex, *jobHost, splunkClient))
+
+		var splunkClients []splunk.SplunkClient
+		for i := 0; i < *hecWorkers; i++ {
+			splunkClient := splunk.NewSplunkClient(*splunkToken, *splunkHost, *splunkIndex, *skipSSL, logger)
+			splunkClients = append(splunkClients, splunkClient)
+		}
+		loggingClient = drain.NewLoggingSplunk(logger, splunkClients, loggingConfig)
 	}
 
 	versionInfo := lager.Data{
-		"version": version,
-		"branch":  branch,
-		"commit":  commit,
-		"buildos": buildos,
+		"version":               version,
+		"branch":                branch,
+		"commit":                commit,
+		"buildos":               buildos,
+		"flush-interval":        *flushInterval,
+		"queue-size":            *queueSize,
+		"batch-size":            *batchSize,
+		"firehose-total-events": *totalEvents,
+		"firehose-eps":          *firehoseEps,
+		"splunk-hec-workers":    *hecWorkers,
 	}
 
 	logger.Info("Connecting to Cloud Foundry. splunk-firehose-nozzle runs", versionInfo)
@@ -145,9 +164,11 @@ func main() {
 
 	dopplerEndpoint := cfClient.Endpoint.DopplerEndpoint
 	tokenRefresher := auth.NewTokenRefreshAdapter(cfClient)
-	consumer := consumer.New(dopplerEndpoint, &tls.Config{InsecureSkipVerify: *skipSSL}, nil)
-	consumer.RefreshTokenFrom(tokenRefresher)
-	consumer.SetIdleTimeout(time.Duration(*keepAlive) * time.Second)
+	_ = tokenRefresher
+	// consumer := consumer.New(dopplerEndpoint, &tls.Config{InsecureSkipVerify: *skipSSL}, nil)
+	// consumer.RefreshTokenFrom(tokenRefresher)
+	// consumer.SetIdleTimeout(time.Duration(*keepAlive) * time.Second)
+	consumer := testing.NewMockFirehoseConsumer(*firehoseEps, *totalEvents, -1)
 
 	firehoseConfig := &firehoseclient.FirehoseConfig{
 		TrafficControllerURL:   dopplerEndpoint,
