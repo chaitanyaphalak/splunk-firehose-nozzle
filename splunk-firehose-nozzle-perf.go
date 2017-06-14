@@ -71,7 +71,7 @@ var (
 			OverrideDefaultFromEnvar("FIREHOSE_EPS").Default("100000").Int()
 	totalEvents = kingpin.Flag("firehose-total-events", "Total events to simulate for Firehose").
 			OverrideDefaultFromEnvar("FIREHOSE_TOTAL_EVENTS").Default("1000000").Int64()
-	hecWorkers = kingpin.Flag("splunk-hec-workers", "Total events to simulate for Firehose").
+	hecWorkers = kingpin.Flag("splunk-hec-workers", "How many workers (concurrency) when post data to HEC").
 			OverrideDefaultFromEnvar("SPLUNK_HEC_WORKERS").Default("1").Int()
 )
 
@@ -84,7 +84,7 @@ var (
 
 func main() {
 	cflager.AddFlags(flag.CommandLine)
-	flag.Parse()
+	// flag.Parse()
 
 	logger, _ := cflager.New("splunk-nozzle-logger")
 	logger.Info("Running splunk-firehose-nozzle")
