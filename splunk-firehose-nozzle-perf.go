@@ -11,11 +11,11 @@ import (
 	"github.com/cloudfoundry-community/firehose-to-syslog/eventRouting"
 	"github.com/cloudfoundry-community/firehose-to-syslog/extrafields"
 	"github.com/cloudfoundry-community/firehose-to-syslog/logging"
-	"github.com/cloudfoundry-community/go-cfclient"
+	// "github.com/cloudfoundry-community/go-cfclient"
 	"github.com/google/uuid"
 	"gopkg.in/alecthomas/kingpin.v2"
 
-	"github.com/cloudfoundry-community/splunk-firehose-nozzle/auth"
+	// "github.com/cloudfoundry-community/splunk-firehose-nozzle/auth"
 	"github.com/cloudfoundry-community/splunk-firehose-nozzle/drain"
 	"github.com/cloudfoundry-community/splunk-firehose-nozzle/firehoseclient"
 	"github.com/cloudfoundry-community/splunk-firehose-nozzle/sink"
@@ -87,7 +87,6 @@ func main() {
 	// flag.Parse()
 
 	logger, _ := cflager.New("splunk-nozzle-logger")
-	logger.Info("Running splunk-firehose-nozzle")
 
 	kingpin.Version(version)
 	kingpin.Parse()
@@ -97,6 +96,7 @@ func main() {
 		logger.Fatal("Error parsing extra fields: ", err)
 	}
 
+	logger.Info("Running splunk-firehose-nozzle")
 	parsedExtraFields["run-uuid"] = uuid.New().String()
 
 	loggingConfig := &drain.LoggingConfig{
@@ -135,7 +135,7 @@ func main() {
 	}
 
 	logger.Info("Connecting to Cloud Foundry. splunk-firehose-nozzle runs", versionInfo)
-	cfConfig := &cfclient.Config{
+	/*cfConfig := &cfclient.Config{
 		ApiAddress:        *apiEndpoint,
 		Username:          *user,
 		Password:          *password,
@@ -153,8 +153,9 @@ func main() {
 		cache.CreateBucket()
 	} else {
 		cache = caching.NewCachingEmpty()
-	}
+	}*/
 
+	cache := caching.NewCachingEmpty()
 	logger.Info("Setting up event routing")
 	events := eventRouting.NewEventRouting(cache, loggingClient)
 	err = events.SetupEventRouting(*wantedEvents)
@@ -162,9 +163,10 @@ func main() {
 		logger.Fatal("Error setting up event routing: ", err)
 	}
 
-	dopplerEndpoint := cfClient.Endpoint.DopplerEndpoint
-	tokenRefresher := auth.NewTokenRefreshAdapter(cfClient)
-	_ = tokenRefresher
+	dopplerEndpoint := "https://localhost"
+	// dopplerEndpoint := cfClient.Endpoint.DopplerEndpoint
+	// dopplerEndpoint := cfClient.Endpoint.DopplerEndpoint
+	// tokenRefresher := auth.NewTokenRefreshAdapter(cfClient)
 	// consumer := consumer.New(dopplerEndpoint, &tls.Config{InsecureSkipVerify: *skipSSL}, nil)
 	// consumer.RefreshTokenFrom(tokenRefresher)
 	// consumer.SetIdleTimeout(time.Duration(*keepAlive) * time.Second)
