@@ -114,6 +114,14 @@ LOOP:
 		}
 	}
 
+	// Wait for events to drain
+	for {
+		time.Sleep(10*time.Millisecond)
+		if len(consumer.events) == 0 {
+			break
+		}
+	}
+
 	duration := time.Now().UnixNano() - start
 	fmt.Printf("Done with generation. Generated %d events in %d nano-seconds, actual_eps=%d, required_eps=%d\n",
 		eventSent, duration, eventSent*1000000000/duration, consumer.eps)
