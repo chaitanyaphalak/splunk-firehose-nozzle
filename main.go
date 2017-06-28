@@ -127,6 +127,7 @@ func main() {
 		"queue-size":     *queueSize,
 		"batch-size":     *batchSize,
 		"workers":        *hecWorkers,
+		"wanted-events":  wantedEvents,
 	}
 
 	logger.Info("Connecting to Cloud Foundry. splunk-firehose-nozzle runs", versionInfo)
